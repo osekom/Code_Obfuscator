@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "LaunchOptions": {
+      "commandName": "Project",
+      "commandLineArgs" : "/Users/shiftkey/WorkHome/VisualStudio/Code_Obfuscator/src/Example_App/ Debug"
+    }
+  }
+}
