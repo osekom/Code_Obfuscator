@@ -18,16 +18,26 @@ namespace Obfuscator.Core;
 //TODO: Make print all files or file to process obfuscate "inspectCode var" (under evaluation)
 public class ObfuscatorCode : CoreBase
 {
-    public ObfuscatorCode(){}
+    #region Properties
     
-    public async Task<bool> Start_Obfuscate(string pathProject, bool inspectCode = false)
+    private string _pathSolution { get; set; }
+
+    private MSBuildWorkspace _workspace { get; set; }
+    private Project _solution { get; set; }
+
+    #endregion
+
+    public ObfuscatorCode(string solutionFilePath)
+    {
+        _pathSolution = solutionFilePath;
+    }
+    
+    public async Task<bool> Start_Obfuscate()
     {
         try
         {
-            MSBuildWorkspace workspace = MSBuildWorkspace.Create();
-            Project solution = await workspace.OpenProjectAsync(pathProject);
-            
-            IEnumerable<Document> documents = solution.Documents;
+            await LoadProject(_pathSolution);
+            IEnumerable<Document> documents = _solution.Documents;
             foreach (var document in documents)
             {
                 SyntaxNode? syntaxRoot = await document.GetSyntaxRootAsync();
@@ -35,9 +45,11 @@ public class ObfuscatorCode : CoreBase
                 SemanticModel? semanticModel = await document.GetSemanticModelAsync();
                 if(semanticModel == null) continue;
                 DebugWrite($"Obfuscating {document.Name}");
-                ObfuscateSyntaxDeclarator(syntaxRoot, semanticModel, workspace, document);
+                ObfuscateSyntaxDeclarator(syntaxRoot, semanticModel, document);
+                await LoadProject(_pathSolution);
             }
-
+            
+            CloseProject();
             return true;
 
         }
@@ -48,24 +60,44 @@ public class ObfuscatorCode : CoreBase
         }
     }
 
+    private async Task LoadProject(string solutionFilePath)
+    {
+        _workspace = MSBuildWorkspace.Create();
+        _solution = await _workspace.OpenProjectAsync(solutionFilePath);
+    }
+
+    private void CloseProject()
+    {
+        _workspace.CloseSolution();
+        _workspace.Dispose();
+    }
+
     private void ObfuscateSyntaxDeclarator(SyntaxNode syntaxRoot, 
                                                      SemanticModel semanticModel, 
-                                                     MSBuildWorkspace workspace,
                                                      Document document)
     {
         string newVariableName = StringExtensions.RandomName();
-        SyntaxNode newRoot = RenameVariable(syntaxRoot, semanticModel, workspace, newVariableName);
-        WriteNewSyntax(newRoot, syntaxRoot, document, workspace);
+        SyntaxNode newRoot = RenameVariable(syntaxRoot, semanticModel, _workspace, newVariableName);
+        WriteNewSyntax(newRoot, syntaxRoot, document);
     }
 
-    private void WriteNewSyntax(SyntaxNode newSyntax, SyntaxNode oldSyntax, Document document, MSBuildWorkspace workspace)
+    private void WriteNewSyntax(SyntaxNode newSyntax, SyntaxNode oldSyntax, Document document)
     {
         try
         {
             if (newSyntax == oldSyntax) return;
             var newDocument = document.WithSyntaxRoot(newSyntax);
             var updatedSolution = newDocument.Project.Solution;
-            workspace.TryApplyChanges(updatedSolution);
+            bool state = _workspace.TryApplyChanges(updatedSolution);
+            if (state)
+            {
+                DebugWrite("Obfuscate complete!");
+            }
+            else
+            {
+                DebugWrite("Obfuscate failed, Force update cs file...");
+                Directories.WriteFileCS(newSyntax.ToString(), newDocument.FilePath?? string.Empty);
+            }
         }
         catch (Exception e)
         {
@@ -77,15 +109,15 @@ public class ObfuscatorCode : CoreBase
     private SyntaxNode RenameVariable(SyntaxNode root, SemanticModel semanticModel, Workspace workspace, string newName)
     {
         var variableNodes = root.DescendantNodes().OfType<VariableDeclaratorSyntax>();
-        
-        if (!variableNodes.Any())
+        var variableDeclaratorSyntaxes = variableNodes as VariableDeclaratorSyntax[] ?? variableNodes.ToArray();
+        if (!variableDeclaratorSyntaxes.Any())
         {
             return root;
         }
         
-        var editor = new SyntaxEditor(root, workspace);
+        var editor = new SyntaxEditor(root, workspace.Services);
 
-        foreach (var variable in variableNodes)
+        foreach (var variable in variableDeclaratorSyntaxes)
         {
             var symbol = ModelExtensions.GetDeclaredSymbol(semanticModel, variable);
             if (symbol != null)
@@ -100,8 +132,8 @@ public class ObfuscatorCode : CoreBase
                 }
                 
                 editor.ReplaceNode(variable, variable.WithIdentifier(SyntaxFactory.Identifier(newName)));
+                DebugWrite($"Obfuscating variable {variable.Identifier.ValueText} to {newName}");
             }
-            DebugWrite($"Obfuscating variable {variable.Identifier.ValueText} to {newName}");
         }
         
         return editor.GetChangedRoot();

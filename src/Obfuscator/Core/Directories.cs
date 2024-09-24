@@ -55,6 +55,15 @@ public class Directories : CoreBase
 
     }
 
+    public static void WriteFileCS(string content, string filePath)
+    {
+        if (!CheckPathAndFileExists(filePath).IsOk) return;
+
+        File.ReadAllText(filePath);
+        File.WriteAllText(filePath, content);
+        DebugWrite($@"Update file: {Path.GetFileName(filePath)}");
+    }
+
     /// <summary>
     /// Return files in especefic directory.
     /// </summary>

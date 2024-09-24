@@ -56,7 +56,7 @@ class Program
             }
         
             Console.WriteLine("Starting obfuscate code...");
-            bool status = await new ObfuscatorCode().Start_Obfuscate(_pathProject);
+            bool status = await new ObfuscatorCode(_pathProject).Start_Obfuscate();
         
             Console.WriteLine( status? "Obfuscated complete!" : "Obfuscated failed!");
         }

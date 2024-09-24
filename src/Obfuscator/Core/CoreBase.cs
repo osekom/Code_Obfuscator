@@ -1,12 +1,11 @@
 namespace Obfuscator.Core;
 
-public partial class CoreBase
+public class CoreBase
 {
-    private const bool debugMode = true;
-    
     public static void DebugWrite(string message)
     {
-        if (debugMode) 
-            Console.WriteLine(message);
+        #if DEBUG
+        Console.WriteLine(message);
+        #endif
     }
 }
